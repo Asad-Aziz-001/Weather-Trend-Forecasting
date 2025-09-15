@@ -1,9 +1,9 @@
 import streamlit as st
-import pickle
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import timedelta
 from streamlit_option_menu import option_menu
+from statsmodels.tsa.arima.model import ARIMA
 
 # -------------------------------
 # Page Config
@@ -15,7 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# -------------------------------
 # Custom CSS
+# -------------------------------
 st.markdown(
     """
     <style>
@@ -61,71 +63,78 @@ with st.sidebar:
     )
 
 # -------------------------------
-# 1. Forecast Page
+# Forecast Page
 # -------------------------------
 if selected == "Forecast":
     st.title("🌍 Weather Forecasting Dashboard")
     st.markdown("#### Powered by **ARIMA Model** & Historical Weather Data")
 
-    # Load Data
-    @st.cache_data
-    def load_data():
-        df = pd.read_csv("clean_weather_data.csv")   # your dataset
+    # Upload CSV
+    uploaded_file = st.file_uploader("Upload your weather CSV file", type="csv")
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
         df["last_updated"] = pd.to_datetime(df["last_updated"])
-        return df
+        
+        # Sidebar settings for Forecast page
+        country = st.sidebar.selectbox("🌐 Select Country", df["country"].unique())
+        forecast_days = st.sidebar.slider("📅 Forecast horizon (days)", 7, 90, 30)
 
-    df = load_data()
+        # Filtered country data
+        country_df = df[df["country"] == country].sort_values("last_updated")
 
-    # Sidebar settings
-    country = st.sidebar.selectbox("🌐 Select Country", df["country"].unique())
-    forecast_days = st.sidebar.slider("📅 Forecast horizon (days)", 7, 90, 30)
+        if len(country_df) < 30:
+            st.warning("Not enough historical data for this country to forecast accurately.")
+        else:
+            # Train ARIMA Model dynamically per country
+            @st.cache_resource
+            def train_arima(data):
+                ts = data["temperature_celsius"]
+                model = ARIMA(ts, order=(5,1,0))
+                model_fit = model.fit()
+                return model_fit
 
-    # Filtered data
-    country_df = df[df["country"] == country].sort_values("last_updated")
+            model = train_arima(country_df)
 
-    # Load Model
-    @st.cache_resource
-    def load_model():
-        with open("arima_temperature_model.pkl", "rb") as f:
-            model = pickle.load(f)
-        return model
+            # Forecast
+            forecast = model.get_forecast(steps=forecast_days)
+            forecast_df = forecast.summary_frame()[["mean"]].rename(columns={"mean": "Forecasted_Temperature"})
+            forecast_df["Date"] = pd.date_range(
+                start=country_df["last_updated"].max() + timedelta(days=1),
+                periods=forecast_days
+            )
 
-    model = load_model()
+            # Layout: historical vs forecast
+            col1, col2 = st.columns(2)
 
-    # Forecast
-    forecast = model.forecast(steps=forecast_days)
-    future_dates = [country_df["last_updated"].max() + timedelta(days=i) for i in range(1, forecast_days + 1)]
-    forecast_df = pd.DataFrame({"Date": future_dates, "Forecasted_Temperature": forecast})
+            with col1:
+                st.subheader(f"📈 Historical Trend: {country}")
+                st.line_chart(country_df.set_index("last_updated")["temperature_celsius"])
 
-    # Layout
-    col1, col2 = st.columns(2)
+            with col2:
+                st.subheader(f"🔮 Forecast ({forecast_days} days)")
+                st.dataframe(forecast_df, use_container_width=True)
 
-    with col1:
-        st.subheader(f"📈 Historical Trend: {country}")
-        st.line_chart(country_df.set_index("last_updated")["temperature_celsius"])
+            # Chart: Historical + Forecast
+            st.subheader(f"🌡 Temperature Forecast - {country}")
+            fig, ax = plt.subplots(figsize=(11, 5))
+            ax.plot(country_df["last_updated"], country_df["temperature_celsius"], label="Historical", color="#1e3c72", linewidth=2)
+            ax.plot(forecast_df["Date"], forecast_df["Forecasted_Temperature"], marker="o", color="#ff6b6b", label="Forecast", linewidth=2)
+            ax.set_title(f"Forecast for {country}", fontsize=16, weight="bold")
+            ax.set_xlabel("Date")
+            ax.set_ylabel("Temperature (°C)")
+            ax.legend()
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
 
-    with col2:
-        st.subheader(f"🔮 Forecast ({forecast_days} days)")
-        st.dataframe(forecast_df, use_container_width=True)
+            # Download forecast
+            csv = forecast_df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download Forecast Data", csv, "forecast.csv", "text/csv")
 
-    # Chart
-    st.subheader(f"🌡 Temperature Forecast - {country}")
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.plot(country_df["last_updated"], country_df["temperature_celsius"], label="Historical", color="#1e3c72", linewidth=2)
-    ax.plot(forecast_df["Date"], forecast_df["Forecasted_Temperature"], marker="o", color="#ff6b6b", label="Forecast", linewidth=2)
-    ax.set_title(f"Forecast for {country}", fontsize=16, weight="bold")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Temperature (°C)")
-    ax.legend()
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
-
-    # Download Button
-    csv = forecast_df.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download Forecast Data", csv, "forecast.csv", "text/csv")
+    else:
+        st.info("Please upload a CSV file to continue.")
 
 # -------------------------------
-# 2. About Page
+# About Page
 # -------------------------------
 elif selected == "About":
     st.title("ℹ️ About This App")
@@ -136,7 +145,7 @@ elif selected == "About":
     - 🎨 Streamlit for modern UI
 
     **How it works:**
-    1. Load historical weather data.  
+    1. Upload historical weather data.  
     2. Train ARIMA model to predict future trends.  
     3. Display results with interactive charts.  
 
@@ -149,7 +158,7 @@ elif selected == "About":
     # Divider
     st.markdown("---")
 
-    # Profile Card
+    # Developer Card
     st.markdown("""
     <div style="background-color:#f8f9fa; padding:20px; border-radius:15px; text-align:center; box-shadow: 0px 4px 8px rgba(0,0,0,0.1);">
         <h2 style="color:#333;">👨‍💻 Developer</h2>
