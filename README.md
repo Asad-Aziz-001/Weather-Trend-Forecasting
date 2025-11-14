@@ -1,7 +1,10 @@
 # Weather-Trend-Forecasting
 🌦 Weather Forecasting App built with Streamlit and ARIMA. Visualize historical temperature trends, forecast future weather per country, and download forecast data. Features interactive charts, dynamic ARIMA modeling, and a clean, modern UI for accurate and insightful weather predictions.
 
-# Live App : https://weather-trend-forecasting-wsqguqrr5mcwain6kbhfdp.streamlit.app/
+
+[![Streamlit App](https://img.shields.io/badge/🚀_Live_Demo-Click_Here-2B82F6?style=for-the-badge)](https://weather-trend-forecasting-wsqguqrr5mcwain6kbhfdp.streamlit.app/)
+
+
 
 # *🌍 Weather & Climate Forecasting Project – Detailed Workflow*
 
